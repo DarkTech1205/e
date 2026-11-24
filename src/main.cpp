@@ -1,7 +1,6 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/LevelInfoLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
-#include <cmath>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -77,7 +76,7 @@ static void relabelRateStarsToDev(CCNode* root) {
     }
 }
 
-// Last-resort recreation of RobTop's "SET FEATURED" popup (matches stream screenshot)
+// Last-resort recreation of RobTop's "SET FEATURED" popup
 class SetFeaturedFallbackController : public CCNode {
 public:
     FLAlertLayer* m_alert = nullptr;
@@ -269,12 +268,11 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
             return false;
         }
 
-        // 1. LEFT SIDE MENU (exact order from RobTop's stream screenshot):
+        // 1. LEFT SIDE MENU:
         //    Top: Green-tinted Moderator Star (Set Featured)
         //    Second: Untinted Moderator Star (Mod Send)
         //    Third: Server Delete (PC with red X)
         if (auto leftMenu = this->getChildByID("left-side-menu")) {
-            // Top: Same texture as normal moderator button, tinted green -> Opens "SET FEATURED"
             if (!leftMenu->getChildByID("robtop-set-featured-btn")) {
                 auto featSpr = createSpriteWithFallback("GJ_starBtnMod_001.png", "GJ_starBtn_001.png");
                 featSpr->setColor(ccc3(95, 255, 130));
@@ -288,7 +286,6 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
                 leftMenu->addChild(featBtn);
             }
 
-            // Second: Normal Moderator button (untinted GJ_starBtnMod_001.png) -> Opens Moderator Send
             if (!leftMenu->getChildByID("robtop-mod-send-btn")) {
                 auto sendSpr = createSpriteWithFallback("GJ_starBtnMod_001.png", "GJ_starBtn_001.png");
                 auto sendBtn = CCMenuItemSpriteExtra::create(
@@ -301,7 +298,6 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
                 leftMenu->addChild(sendBtn);
             }
 
-            // Third: Server Delete button (PC/Server tower with red X)
             if (!leftMenu->getChildByID("robtop-server-delete-btn")) {
                 auto delSpr = createSpriteWithFallback("GJ_deleteServerBtn_001.png", "GJ_deleteBtn_001.png");
                 auto delBtn = CCMenuItemSpriteExtra::create(
@@ -430,10 +426,10 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
         }
     }
 
-    // 2nd Play button -> Launches Verification Replay autoplay
+    // 2nd Play button -> Launches PlayLayer with Noclip active (uncounted run)
     void onVerificationReplayPlay(CCObject*) {
         g_verificationReplayRequested = true;
-        Notification::create("Verification Replay Active", NotificationIcon::Info)->show();
+        Notification::create("Verification Replay (No Progress)", NotificationIcon::Info)->show();
 
         if (auto playMenu = this->getChildByID("play-menu")) {
             if (auto mainPlay = typeinfo_cast<CCMenuItem*>(playMenu->getChildByID("play-button"))) {
@@ -451,118 +447,89 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
 
 class $modify(VerificationReplayPlayLayer, PlayLayer) {
     struct Fields {
-        bool m_isRobTopReplay = false;
-        bool m_holdingInput = false;
-        float m_lastPlayerY = 0.f;
-        float m_pulseTimer = 0.f;
+        bool m_isNoclipReplay = false;
+        int m_prevNormalPercent = 0;
+        int m_prevPracticePercent = 0;
+        int m_prevOrbCompletion = 0;
+        int m_prevStars = 0;
+        int m_prevCoinsVerified = 0;
+        bool m_prevIsVerified = false;
+        int m_prevAttempts = 0;
+        int m_prevJumps = 0;
     };
 
-    void setBotInput(bool down) {
-        if (m_fields->m_holdingInput == down) return;
-        m_fields->m_holdingInput = down;
-        if (auto dispatcher = CCDirector::sharedDirector()->getKeyboardDispatcher()) {
-            dispatcher->dispatchKeyboardMSG(enumKeyCodes::KEY_Space, down, false, 0.0);
-        }
+    void restoreLevelStats() {
+        if (!m_fields->m_isNoclipReplay || !m_level) return;
+        m_level->m_normalPercent = m_fields->m_prevNormalPercent;
+        m_level->m_practicePercent = m_fields->m_prevPracticePercent;
+        m_level->m_orbCompletion = m_fields->m_prevOrbCompletion;
+        m_level->m_stars = m_fields->m_prevStars;
+        m_level->m_coinsVerified = m_fields->m_prevCoinsVerified;
+        m_level->m_isVerified = m_fields->m_prevIsVerified;
+        m_level->m_attempts = m_fields->m_prevAttempts;
+        m_level->m_jumps = m_fields->m_prevJumps;
     }
 
     bool init(GJGameLevel* level, bool dontCreateObjects) {
         bool active = g_verificationReplayRequested;
         g_verificationReplayRequested = false;
 
+        if (active && level) {
+            m_fields->m_prevNormalPercent = level->m_normalPercent;
+            m_fields->m_prevPracticePercent = level->m_practicePercent;
+            m_fields->m_prevOrbCompletion = level->m_orbCompletion;
+            m_fields->m_prevStars = level->m_stars;
+            m_fields->m_prevCoinsVerified = level->m_coinsVerified;
+            m_fields->m_prevIsVerified = level->m_isVerified;
+            m_fields->m_prevAttempts = level->m_attempts;
+            m_fields->m_prevJumps = level->m_jumps;
+        }
+
         if (!PlayLayer::init(level, dontCreateObjects)) {
             return false;
         }
 
-        m_fields->m_isRobTopReplay = active;
+        m_fields->m_isNoclipReplay = active;
 
         if (active) {
+            // Prevents GD from awarding stars, orbs, demons, coins, or completion credit
+            m_isTestMode = true;
+
             auto winSize = CCDirector::sharedDirector()->getWinSize();
-            auto badge = CCLabelBMFont::create("VERIFICATION REPLAY", "bigFont.fnt");
+            auto badge = CCLabelBMFont::create("VERIFICATION REPLAY (UNRATED)", "bigFont.fnt");
             badge->setScale(0.35f);
             badge->setOpacity(120);
             badge->setPosition({winSize.width / 2.f, winSize.height - 14.f});
             badge->setID("robtop-verification-replay-badge");
             this->addChild(badge, 100);
-
-            if (m_player1) {
-                m_fields->m_lastPlayerY = m_player1->getPositionY();
-            }
-
-            this->schedule(schedule_selector(VerificationReplayPlayLayer::updateVerificationReplay));
         }
 
         return true;
     }
 
-    void updateVerificationReplay(float dt) {
-        if (!m_fields->m_isRobTopReplay || !m_player1) return;
-
-        CCPoint pPos = m_player1->getPosition();
-        float vy = (dt > 0.0001f) ? (pPos.y - m_fields->m_lastPlayerY) / dt : 0.f;
-        m_fields->m_lastPlayerY = pPos.y;
-        m_fields->m_pulseTimer += dt;
-
-        bool hazardAhead = false;
-        bool ceilingThreat = false;
-        bool orbAhead = false;
-
-        if (m_objects) {
-            unsigned int count = m_objects->count();
-            for (unsigned int i = 0; i < count; ++i) {
-                auto obj = static_cast<CCNode*>(m_objects->objectAtIndex(i));
-                if (!obj || !obj->isVisible()) continue;
-
-                CCPoint oPos = obj->getPosition();
-                float dx = oPos.x - pPos.x;
-
-                if (dx < -8.f || dx > 110.f) continue;
-
-                float dy = oPos.y - pPos.y;
-                CCSize sz = obj->getContentSize();
-                float halfH = std::max(14.f, sz.height * std::abs(obj->getScaleY()) * 0.5f);
-
-                // Interactive ring/orb near player path
-                if (dx >= -4.f && dx <= 48.f && std::abs(dy) <= 34.f && halfH >= 15.f && halfH <= 26.f) {
-                    orbAhead = true;
-                }
-
-                // Floor / mid-level obstacle directly in front of player
-                if (dx >= 0.f && dx <= 95.f && dy >= -22.f && dy <= (halfH + 16.f)) {
-                    hazardAhead = true;
-                }
-
-                // Ceiling obstacle right above player
-                if (dx >= -6.f && dx <= 85.f && dy > 24.f && dy <= 76.f) {
-                    ceilingThreat = true;
-                }
-            }
-        }
-
-        bool wantHold = false;
-        if (ceilingThreat && !hazardAhead) {
-            wantHold = false;
-        } else if (orbAhead) {
-            wantHold = (std::fmod(m_fields->m_pulseTimer, 0.14f) < 0.07f);
-        } else if (hazardAhead) {
-            if (vy > 320.f) {
-                wantHold = (std::fmod(m_fields->m_pulseTimer, 0.16f) < 0.08f);
-            } else {
-                wantHold = true;
-            }
-        }
-
-        setBotInput(wantHold);
-    }
-
     void destroyPlayer(PlayerObject* player, GameObject* obj) {
-        if (m_fields->m_isRobTopReplay) {
+        if (m_fields->m_isNoclipReplay) {
             return;
         }
         PlayLayer::destroyPlayer(player, obj);
     }
 
-    void onExit() {
-        setBotInput(false);
-        PlayLayer::onExit();
+    void levelComplete() {
+        if (m_fields->m_isNoclipReplay) {
+            m_isTestMode = true;
+            PlayLayer::levelComplete();
+            restoreLevelStats();
+            return;
+        }
+        PlayLayer::levelComplete();
+    }
+
+    void onQuit() {
+        if (m_fields->m_isNoclipReplay) {
+            m_isTestMode = true;
+            restoreLevelStats();
+        }
+        PlayLayer::onQuit();
+        restoreLevelStats();
     }
 };
