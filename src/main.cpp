@@ -172,3 +172,156 @@ public:
         CCDirector::sharedDirector()->popSceneWithTransition(
             0.5f, PopTransition::kPopTransitionFade
         );
+    }
+};
+
+class $modify(SecretModButtonsLayer, LevelInfoLayer) {
+    bool init(GJGameLevel* level, bool challenge) {
+        if (!LevelInfoLayer::init(level, challenge)) {
+            return false;
+        }
+
+        // 1. LEFT SIDE MENU: Elder Mod Delete button (at the top of left-side-menu)
+        if (auto leftMenu = this->getChildByID("left-side-menu")) {
+            if (!leftMenu->getChildByID("elder-delete-btn")) {
+                auto delSpr = createSpriteWithFallback("GJ_deleteBtn_001.png", "GJ_trashBtn_001.png");
+                auto delBtn = CCMenuItemSpriteExtra::create(
+                    delSpr,
+                    this,
+                    menu_selector(SecretModButtonsLayer::onElderDelete)
+                );
+                delBtn->setID("elder-delete-btn");
+                delBtn->setZOrder(-10);
+                leftMenu->addChild(delBtn);
+                leftMenu->updateLayout();
+            }
+        }
+
+        // 2. RIGHT SIDE MENU: Demon Rating + Green-Tinted Moderator Send/Rate button
+        if (auto rightMenu = this->getChildByID("right-side-menu")) {
+            if (!rightMenu->getChildByID("mod-demon-btn")) {
+                auto demonSpr = createSpriteWithFallback("GJ_rateDiffBtn_001.png", "diffIcon_06_btn_001.png");
+                auto demonBtn = CCMenuItemSpriteExtra::create(
+                    demonSpr,
+                    this,
+                    menu_selector(SecretModButtonsLayer::onModDemon)
+                );
+                demonBtn->setID("mod-demon-btn");
+                demonBtn->setZOrder(10);
+                rightMenu->addChild(demonBtn);
+            }
+
+            if (!rightMenu->getChildByID("mod-send-btn")) {
+                auto sendSpr = createSpriteWithFallback("GJ_starBtnMod_001.png", "GJ_starBtn_001.png");
+                sendSpr->setColor(ccc3(120, 255, 120));
+                auto sendBtn = CCMenuItemSpriteExtra::create(
+                    sendSpr,
+                    this,
+                    menu_selector(SecretModButtonsLayer::onModSend)
+                );
+                sendBtn->setID("mod-send-btn");
+                sendBtn->setZOrder(20);
+                rightMenu->addChild(sendBtn);
+            }
+
+            rightMenu->updateLayout();
+        }
+
+        // 3. CENTER PLAY MENU: RobTop's mysterious 2nd Play button next to the main Play button
+        if (auto playMenu = this->getChildByID("play-menu")) {
+            if (!this->getChildByID("robtop-second-play-menu")) {
+                CCPoint mainPlayPos = {0.f, 51.f};
+                if (auto mainPlayBtn = playMenu->getChildByID("play-button")) {
+                    mainPlayPos = mainPlayBtn->getPosition();
+                } else if (playMenu->getChildrenCount() > 0) {
+                    if (auto firstChild = static_cast<CCNode*>(playMenu->getChildren()->objectAtIndex(0))) {
+                        mainPlayPos = firstChild->getPosition();
+                    }
+                }
+
+                auto secondPlayMenu = CCMenu::create();
+                secondPlayMenu->setID("robtop-second-play-menu");
+                secondPlayMenu->setPosition(playMenu->getPosition());
+
+                auto secondSpr = createSpriteWithFallback("GJ_playBtn2_001.png", "GJ_playBtn_001.png");
+                secondSpr->setScale(0.68f);
+
+                auto secondBtn = CCMenuItemSpriteExtra::create(
+                    secondSpr,
+                    this,
+                    menu_selector(SecretModButtonsLayer::onRobTopSecondPlay)
+                );
+                secondBtn->setID("robtop-second-play-btn");
+                secondBtn->setPosition({mainPlayPos.x + 92.f, mainPlayPos.y});
+
+                secondPlayMenu->addChild(secondBtn);
+                this->addChild(secondPlayMenu, playMenu->getZOrder());
+            }
+        }
+
+        return true;
+    }
+
+    void onModSend(CCObject*) {
+        int levelID = static_cast<int>(m_level->m_levelID);
+        if (auto layer = RateStarsLayer::create(levelID, m_level->isPlatformer(), true)) {
+            layer->show();
+        }
+    }
+
+    void onModDemon(CCObject*) {
+#ifdef GEODE_IS_ANDROID
+        int levelID = static_cast<int>(m_level->m_levelID);
+        if (auto layer = RateDemonLayer::create(levelID)) {
+            layer->show();
+            return;
+        }
+#endif
+        auto alert = FLAlertLayer::create(
+            nullptr,
+            "Rate Demon",
+            "\n\n\n\n",
+            "Cancel",
+            "Submit",
+            360.f
+        );
+        if (alert) {
+            auto controller = DemonPopupController::create(alert);
+            alert->m_mainLayer->addChild(controller);
+            controller->setupUI();
+            alert->show();
+        }
+    }
+
+    void onElderDelete(CCObject*) {
+        auto alert = FLAlertLayer::create(
+            nullptr,
+            "Delete Level",
+            "Are you sure you want to <cr>delete</c> this level?",
+            "NO",
+            "YES",
+            320.f
+        );
+        if (alert) {
+            auto controller = DeletePopupController::create(alert);
+            alert->m_mainLayer->addChild(controller);
+            controller->setup();
+            alert->show();
+        }
+    }
+
+    void onRobTopSecondPlay(CCObject*) {
+        Notification::create("RobTop Secret Play", NotificationIcon::Info)->show();
+        if (auto playMenu = this->getChildByID("play-menu")) {
+            if (auto mainPlay = typeinfo_cast<CCMenuItem*>(playMenu->getChildByID("play-button"))) {
+                mainPlay->activate();
+                return;
+            }
+            if (playMenu->getChildrenCount() > 0) {
+                if (auto firstItem = typeinfo_cast<CCMenuItem*>(playMenu->getChildren()->objectAtIndex(0))) {
+                    firstItem->activate();
+                }
+            }
+        }
+    }
+};
