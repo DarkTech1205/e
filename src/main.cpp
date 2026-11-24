@@ -84,7 +84,7 @@ public:
     CCLabelBMFont* m_scoreLabel = nullptr;
     ButtonSprite* m_epicBtnSpr = nullptr;
     int m_featuredScore = 24970;
-    int m_epicMode = 1; // 0 = FEATURED, 1 = EPIC ONLY, 2 = LEGENDARY, 3 = MYTHIC
+    int m_epicMode = 1; // 0 = FEAT ONLY, 1 = EPIC ONLY, 2 = LEGD ONLY, 3 = MYTH ONLY
 
     static SetFeaturedFallbackController* create(FLAlertLayer* alert, GJGameLevel* level) {
         auto ret = new SetFeaturedFallbackController();
@@ -429,12 +429,7 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
     // 2nd Play button -> Launches Verification Replay playback
     void onVerificationReplayPlay(CCObject*) {
         g_verificationReplayRequested = true;
-        bool hasRecordedInputs = !std::string(m_level->m_recordedInputs).empty();
-        if (hasRecordedInputs) {
-            Notification::create("Playing Creator Verification Replay", NotificationIcon::Info)->show();
-        } else {
-            Notification::create("Verification Replay Mode (No server replay data; Noclip active)", NotificationIcon::Info)->show();
-        }
+        Notification::create("Verification Replay Mode Active", NotificationIcon::Info)->show();
 
         if (auto playMenu = this->getChildByID("play-menu")) {
             if (auto mainPlay = typeinfo_cast<CCMenuItem*>(playMenu->getChildByID("play-button"))) {
@@ -455,14 +450,11 @@ class $modify(VerificationReplayPlayLayer, PlayLayer) {
         bool m_isRobTopReplay = false;
     };
 
-    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
+    bool init(GJGameLevel* level, bool dontCreateObjects) {
         bool active = g_verificationReplayRequested;
         g_verificationReplayRequested = false;
 
-        bool hasReplayData = level && !std::string(level->m_recordedInputs).empty();
-        bool finalUseReplay = useReplay || (active && hasReplayData);
-
-        if (!PlayLayer::init(level, finalUseReplay, dontCreateObjects)) {
+        if (!PlayLayer::init(level, dontCreateObjects)) {
             return false;
         }
 
@@ -482,6 +474,7 @@ class $modify(VerificationReplayPlayLayer, PlayLayer) {
     }
 
     void destroyPlayer(PlayerObject* player, GameObject* obj) {
+        // RobTop's verification replay playback prevents death on collisions
         if (m_fields->m_isRobTopReplay) {
             return;
         }
