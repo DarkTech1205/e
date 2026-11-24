@@ -1,0 +1,14 @@
+{
+	"geode": "6.0.0-beta.2",
+	"gd": {
+		"win": "2.2091",
+		"android": "2.2091",
+		"mac": "2.2091",
+		"ios": "2.2091"
+	},
+	"id": "reyewi.secret-mod-buttons",
+	"name": "Secret Mod Buttons",
+	"version": "v1.0.0",
+	"developer": "reyewi",
+	"description": "Unlocks the hidden Moderator Send/Rate, Demon Rating, and Elder Mod Delete buttons on level screens."
+}
