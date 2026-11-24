@@ -32,7 +32,7 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
                 leftMenu->addChild(sendBtn);
             }
 
-            // 2. Moderator Demon Rating button (Easy / Medium / Hard / Insane / Extreme Demon)
+            // 2. Moderator Demon Rating button
             if (!leftMenu->getChildByID("mod-demon-btn")) {
                 auto demonSpr = createSpriteWithFallback("GJ_rateDiffBtn_001.png", "diffIcon_06_btn_001.png");
                 auto demonBtn = CCMenuItemSpriteExtra::create(
@@ -70,10 +70,11 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
     }
 
     void onModDemon(CCObject*) {
-        int levelID = static_cast<int>(m_level->m_levelID);
-        if (auto layer = RateDemonLayer::create(levelID)) {
-            layer->show();
-        }
+        FLAlertLayer::create(
+            "Mod Demon Vote",
+            "Moderator Demon rating button unlocked! (RateDemonLayer bindings are not yet mapped for Win/Mac/iOS in GD 2.2091, and RobTop's servers verify mod permissions on submit.)",
+            "OK"
+        )->show();
     }
 
     void onElderDelete(CCObject*) {
