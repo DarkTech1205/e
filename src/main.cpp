@@ -1,6 +1,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/LevelInfoLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <cmath>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -76,7 +77,7 @@ static void relabelRateStarsToDev(CCNode* root) {
     }
 }
 
-// Last-resort recreation of RobTop's "SET FEATURED" popup
+// Last-resort recreation of RobTop's "SET FEATURED" popup (matches stream screenshot)
 class SetFeaturedFallbackController : public CCNode {
 public:
     FLAlertLayer* m_alert = nullptr;
@@ -268,15 +269,15 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
             return false;
         }
 
-        // 1. LEFT SIDE MENU:
-        //    Top: Green Star (Set Featured) -> Yellow Star (Mod Send) -> Server Delete (PC with red X)
+        // 1. LEFT SIDE MENU (exact order from RobTop's stream screenshot):
+        //    Top: Green-tinted Moderator Star (Set Featured)
+        //    Second: Untinted Moderator Star (Mod Send)
+        //    Third: Server Delete (PC with red X)
         if (auto leftMenu = this->getChildByID("left-side-menu")) {
-            // Top: Green Star button -> Opens "SET FEATURED"
+            // Top: Same texture as normal moderator button, tinted green -> Opens "SET FEATURED"
             if (!leftMenu->getChildByID("robtop-set-featured-btn")) {
                 auto featSpr = createSpriteWithFallback("GJ_starBtnMod_001.png", "GJ_starBtn_001.png");
-                if (!CCSpriteFrameCache::sharedSpriteFrameCache()->spriteFrameByName("GJ_starBtnMod_001.png")) {
-                    featSpr->setColor(ccc3(80, 255, 110));
-                }
+                featSpr->setColor(ccc3(95, 255, 130));
                 auto featBtn = CCMenuItemSpriteExtra::create(
                     featSpr,
                     this,
@@ -287,9 +288,9 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
                 leftMenu->addChild(featBtn);
             }
 
-            // Second: Yellow Star button -> Opens Moderator Send / Rate
+            // Second: Normal Moderator button (untinted GJ_starBtnMod_001.png) -> Opens Moderator Send
             if (!leftMenu->getChildByID("robtop-mod-send-btn")) {
-                auto sendSpr = createSpriteWithFallback("GJ_starBtn_001.png", "GJ_starBtnMod_001.png");
+                auto sendSpr = createSpriteWithFallback("GJ_starBtnMod_001.png", "GJ_starBtn_001.png");
                 auto sendBtn = CCMenuItemSpriteExtra::create(
                     sendSpr,
                     this,
@@ -333,7 +334,7 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
             }
         }
 
-        // 3. CENTER PLAY MENU: RobTop's 2nd Play button (Verification Replay playback)
+        // 3. CENTER PLAY MENU: RobTop's small, translucent, cyan-tinted 2nd Play button
         if (auto playMenu = this->getChildByID("play-menu")) {
             if (!this->getChildByID("robtop-replay-play-menu")) {
                 CCPoint mainPlayPos = {0.f, 51.f};
@@ -350,7 +351,10 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
                 replayPlayMenu->setPosition(playMenu->getPosition());
 
                 auto replaySpr = createSpriteWithFallback("GJ_playBtn2_001.png", "GJ_playBtn_001.png");
-                replaySpr->setScale(0.68f);
+                replaySpr->setScale(0.42f);
+                replaySpr->setColor(ccc3(95, 210, 255));
+                replaySpr->setCascadeOpacityEnabled(true);
+                replaySpr->setOpacity(145);
 
                 auto replayBtn = CCMenuItemSpriteExtra::create(
                     replaySpr,
@@ -358,7 +362,7 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
                     menu_selector(SecretModButtonsLayer::onVerificationReplayPlay)
                 );
                 replayBtn->setID("robtop-replay-play-btn");
-                replayBtn->setPosition({mainPlayPos.x + 92.f, mainPlayPos.y});
+                replayBtn->setPosition({mainPlayPos.x + 74.f, mainPlayPos.y});
 
                 replayPlayMenu->addChild(replayBtn);
                 this->addChild(replayPlayMenu, playMenu->getZOrder());
@@ -368,7 +372,7 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
         return true;
     }
 
-    // Green Star (top-left) -> "SET FEATURED"
+    // Green-tinted Moderator Star (top-left) -> "SET FEATURED"
     void onSetFeatured(CCObject*) {
         int levelID = static_cast<int>(m_level->m_levelID);
         if (tryOpenNativeFeatureLayer(levelID)) {
@@ -391,7 +395,7 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
         }
     }
 
-    // Yellow Star (second on left) -> Moderator Send / Suggest
+    // Untinted Moderator Star (second on left) -> Moderator Send / Suggest
     void onModSend(CCObject*) {
         int levelID = static_cast<int>(m_level->m_levelID);
         if (auto layer = RateStarsLayer::create(levelID, m_level->isPlatformer(), true)) {
@@ -426,10 +430,10 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
         }
     }
 
-    // 2nd Play button -> Launches Verification Replay playback
+    // 2nd Play button -> Launches Verification Replay autoplay
     void onVerificationReplayPlay(CCObject*) {
         g_verificationReplayRequested = true;
-        Notification::create("Verification Replay Mode Active", NotificationIcon::Info)->show();
+        Notification::create("Verification Replay Active", NotificationIcon::Info)->show();
 
         if (auto playMenu = this->getChildByID("play-menu")) {
             if (auto mainPlay = typeinfo_cast<CCMenuItem*>(playMenu->getChildByID("play-button"))) {
@@ -448,7 +452,18 @@ class $modify(SecretModButtonsLayer, LevelInfoLayer) {
 class $modify(VerificationReplayPlayLayer, PlayLayer) {
     struct Fields {
         bool m_isRobTopReplay = false;
+        bool m_holdingInput = false;
+        float m_lastPlayerY = 0.f;
+        float m_pulseTimer = 0.f;
     };
+
+    void setBotInput(bool down) {
+        if (m_fields->m_holdingInput == down) return;
+        m_fields->m_holdingInput = down;
+        if (auto dispatcher = CCDirector::sharedDirector()->getKeyboardDispatcher()) {
+            dispatcher->dispatchKeyboardMSG(enumKeyCodes::KEY_Space, down, false);
+        }
+    }
 
     bool init(GJGameLevel* level, bool dontCreateObjects) {
         bool active = g_verificationReplayRequested;
@@ -468,16 +483,86 @@ class $modify(VerificationReplayPlayLayer, PlayLayer) {
             badge->setPosition({winSize.width / 2.f, winSize.height - 14.f});
             badge->setID("robtop-verification-replay-badge");
             this->addChild(badge, 100);
+
+            if (m_player1) {
+                m_fields->m_lastPlayerY = m_player1->getPositionY();
+            }
+
+            this->schedule(schedule_selector(VerificationReplayPlayLayer::updateVerificationReplay));
         }
 
         return true;
     }
 
+    void updateVerificationReplay(float dt) {
+        if (!m_fields->m_isRobTopReplay || !m_player1) return;
+
+        CCPoint pPos = m_player1->getPosition();
+        float vy = (dt > 0.0001f) ? (pPos.y - m_fields->m_lastPlayerY) / dt : 0.f;
+        m_fields->m_lastPlayerY = pPos.y;
+        m_fields->m_pulseTimer += dt;
+
+        bool hazardAhead = false;
+        bool ceilingThreat = false;
+        bool orbAhead = false;
+
+        if (m_objects) {
+            unsigned int count = m_objects->count();
+            for (unsigned int i = 0; i < count; ++i) {
+                auto obj = static_cast<CCNode*>(m_objects->objectAtIndex(i));
+                if (!obj || !obj->isVisible()) continue;
+
+                CCPoint oPos = obj->getPosition();
+                float dx = oPos.x - pPos.x;
+
+                if (dx < -8.f || dx > 110.f) continue;
+
+                float dy = oPos.y - pPos.y;
+                CCSize sz = obj->getContentSize();
+                float halfH = std::max(14.f, sz.height * std::abs(obj->getScaleY()) * 0.5f);
+
+                // Interactive ring/orb near player path
+                if (dx >= -4.f && dx <= 48.f && std::abs(dy) <= 34.f && halfH >= 15.f && halfH <= 26.f) {
+                    orbAhead = true;
+                }
+
+                // Floor / mid-level obstacle directly in front of player
+                if (dx >= 0.f && dx <= 95.f && dy >= -22.f && dy <= (halfH + 16.f)) {
+                    hazardAhead = true;
+                }
+
+                // Ceiling obstacle right above player
+                if (dx >= -6.f && dx <= 85.f && dy > 24.f && dy <= 76.f) {
+                    ceilingThreat = true;
+                }
+            }
+        }
+
+        bool wantHold = false;
+        if (ceilingThreat && !hazardAhead) {
+            wantHold = false;
+        } else if (orbAhead) {
+            wantHold = (std::fmod(m_fields->m_pulseTimer, 0.14f) < 0.07f);
+        } else if (hazardAhead) {
+            if (vy > 320.f) {
+                wantHold = (std::fmod(m_fields->m_pulseTimer, 0.16f) < 0.08f);
+            } else {
+                wantHold = true;
+            }
+        }
+
+        setBotInput(wantHold);
+    }
+
     void destroyPlayer(PlayerObject* player, GameObject* obj) {
-        // RobTop's verification replay playback prevents death on collisions
         if (m_fields->m_isRobTopReplay) {
             return;
         }
         PlayLayer::destroyPlayer(player, obj);
+    }
+
+    void onExit() {
+        setBotInput(false);
+        PlayLayer::onExit();
     }
 };
