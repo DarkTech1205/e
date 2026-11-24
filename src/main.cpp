@@ -461,7 +461,7 @@ class $modify(VerificationReplayPlayLayer, PlayLayer) {
         if (m_fields->m_holdingInput == down) return;
         m_fields->m_holdingInput = down;
         if (auto dispatcher = CCDirector::sharedDirector()->getKeyboardDispatcher()) {
-            dispatcher->dispatchKeyboardMSG(enumKeyCodes::KEY_Space, down, false);
+            dispatcher->dispatchKeyboardMSG(enumKeyCodes::KEY_Space, down, false, 0.0);
         }
     }
 
